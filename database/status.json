@@ -1,0 +1,11 @@
+{
+    "Bot Working": true,
+    "Admin Cog": true,
+    "Admin Cog Error": false,
+    "Misc Cog": true,
+    "Misc Cog Error": false,
+    "Moderation Cog": true,
+    "Moderation Cog Error": false,
+    "Currency Cog": true,
+    "Currency Cog Error": false
+}
