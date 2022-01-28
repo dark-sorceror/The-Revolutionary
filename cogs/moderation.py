@@ -1,87 +1,44 @@
 import discord
-from discord.ext import commands, tasks
-from discord.ext.commands.bot import Bot
 import time
-from discord.ext import commands
-import datetime
-from datetime import datetime, timedelta, timezone
 import asyncio
 import random
 import json
 import re
-from urllib.parse import quote_plus
-from pathlib import Path
 import sys
 import locale
+import typing
+import pymongo
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote_plus
+from pathlib import Path
 from num2words import num2words
-# import fuzzywuzzy (NEXT UPDATE)
 
-cwd = Path(__file__).parents[0]
-cwd = str(cwd)
-default = "+"
-status = [False, False, False, False]
-statusdetails = [True, False, False, False]
-efile = 'C:/Users/Hao/PycharmProjects/master/error logs'
-color = discord.Color.gold()  # apply later
+import discord
+from discord.ext import commands, tasks
+from discord.ext.commands.bot import Bot
 
-def filterOnlyBots(member): return member.bot
-def write_json(data, filename):
-    with open(f"{cwd}/{filename}.json", "w") as file:
-        json.dump(data, file, indent=4)
-def read_json(filename):
-    with open(f"{cwd}/{filename}.json", "r") as file:
-        data = json.load(file)
-    return data
-def community_report(ctx):
-    guild = bot.get_guild(ctx.author.guild.id)
-    online = 0
-    idle = 0
-    offline = 0
-    dnd = 0
-    for m in guild.members:
-        if str(m.status) == "online":
-            online += 1
-        elif str(m.status) == "offline":
-            offline += 1
-        elif str(m.status) == "dnd":
-            dnd += 1
-        elif str(m.status) == "idle":
-            idle += 1
+from variables import (
+    color,
+    cu,
+    determine_prefix,
+    bot
+)
 
-    return online, idle, offline, dnd
+membed=discord.Embed(
+    description="```yaml\nSyntax: r!ban <user> [days] [reason]```\nBan a user from this server and optionally delete days of messages.\n`[days]` is the amoutn of days of messages to cleanup on ban.", color=discord.Color.red())
+membed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+membed.add_field(
+    name="Examples",
+    value="<:replystart:895447277622161469> `r!ban 567487802900480000 7 Rude to other members`\n<:ReplyContinue:882064049850961981> `r!ban` <@567487802900480000> `2 Making rumours`\n<:Reply:882064180251877416> `r!ban Fantom#1258 7 Starting drama`")
+membed.add_field(name="**Permissions**",value="`USER` ─ `Administrator` | `Ban Members`\n`BOT` ─ `Ban Members`")
 
-async def cu(command, db):
-    db["Total"][f"{command}"] += 1
-    db["Daily"][f"{command}"] += 1
-async def ctm(guild_id, db): db[str(guild_id)]["Total Messages"] += 1
-async def ctc(guild_id, db): db[str(guild_id)]["Total Commands"] += 1
-async def cs(guild_id, db, prefix): db[str(guild_id)]["Prefix"] = prefix
-async def ci(guild_id, db, invite): db[str(guild_id)]["Invite"] = f"{invite}"
-async def cmr(guild_id, db, role_id): db[str(guild_id)]["Mute Role"] = role_id
-async def determine_prefix(bot, message):
-    with open('serverdb.json', "r") as f:
-        prefix = json.load(f)
-    if str(message.guild.id) in prefix:
-        if prefix[str(message.guild.id)]["Prefix"] is None:
-            return default
-        else:
-            return prefix[str(message.guild.id)]["Prefix"]
-    else:
-        return default
-async def udb(guild_id, db):
-    if not str(guild_id) in db:
-        db[str(guild_id)] = {}
-        db[str(guild_id)]["Prefix"] = None
-        db[str(guild_id)]["Invite"] = None
-        db[str(guild_id)]["Mute Role"] = None
-        db[str(guild_id)]["Total Messages"] = 0
-        db[str(guild_id)]["Total Commands"] = 0
-    else:
-        return
-
-bot = Bot(command_prefix=determine_prefix, intents=discord.Intents().all(), owner_ids=[497903117241810945, 567487802900480000])
-bot.blacklisted_users = []
-bot.remove_command('help')
+kembed=discord.Embed(
+    description="```yaml\nSyntax: r!kick <user> [reason]```\nKick a user from this server", color=discord.Color.red())
+kembed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+kembed.add_field(
+    name="Examples",
+    value="<:replystart:895447277622161469> `r!kick 567487802900480000 Rude to other members`\n<:ReplyContinue:882064049850961981> `r!kick` <@567487802900480000> `Making rumours`\n<:Reply:882064180251877416> `r!kick Fantom#1258 Starting drama`")
+kembed.add_field(name="**Permissions**",value="`USER` ─ `Administrator` | `Kick Members`\n`BOT` ─ `Kick Members`")
 
 @commands.command(aliases=["Ban", "BAN"])
 @commands.has_permissions(ban_members=True)
@@ -95,17 +52,17 @@ async def ban(ctx, member: discord.Member, *, reason=None):
 @ban.error
 async def be(ctx, error):
     if isinstance(error, commands.BadArgument):
-        embed = discord.Embed(description=f"{error}", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        await ctx.reply(embed=membed, mention_author=False)
     elif isinstance(error, commands.MissingRequiredArgument):
-        embed = discord.Embed(description="**Missing Required Argument:** `Member`", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        await ctx.reply(content="```yaml\nr!ban <user> [days] [reason]\n    ^^^^\n<user> is a required argument that is missing.```",embed=membed, mention_author=False)
     elif isinstance(error, commands.MissingPermissions):
-        embed = discord.Embed(description="Your missing `BAN_MEMBERS` permission`", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        embed = discord.Embed(description="Your missing `BAN_MEMBERS` permission", color=discord.Color.red())
+        embed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
     elif isinstance(error, commands.BotMissingPermissions):
-        embed = discord.Embed(description="Bot is missing `BAN_MEMBERS` permission`", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        embed = discord.Embed(description="Bot is missing `BAN_MEMBERS` permission", color=discord.Color.red())
+        embed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
 
 @commands.command(aliases=["Kick", "KICK"])
 @commands.has_permissions(kick_members=True)
@@ -119,17 +76,19 @@ async def kick(ctx, member: discord.Member, *, reason=None):
 @kick.error
 async def ke(ctx, error):
     if isinstance(error, commands.BadArgument):
-        embed = discord.Embed(description="Member Not Found", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        await ctx.reply(embed=kembed, mention_author=False)
     elif isinstance(error, commands.MissingRequiredArgument):
-        embed = discord.Embed(description="Missing Required Argument: Member", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        await ctx.reply(
+            content="```yaml\nr!kick <user> [reason]\n    ^^^^\n<user> is a required argument that is missing.```",
+            embed=kembed, mention_author=False)
     elif isinstance(error, commands.MissingPermissions):
-        embed = discord.Embed(description="Your missing `KICK MEMBERS` permission`", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        embed = discord.Embed(description="Your missing `KICK_MEMBERS` permission", color=discord.Color.red())
+        embed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
     elif isinstance(error, commands.BotMissingPermissions):
-        embed = discord.Embed(description="Bot is missing `KICK MEMBERS` permission`", color=discord.Color.gold())
-        await ctx.send(embed=embed)
+        embed = discord.Embed(description="Bot is missing `KICK_MEMBERS` permission", color=discord.Color.red())
+        embed.set_author(name='Error', icon_url='https://cdn.discordapp.com/emojis/895068499175682098.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
 
 @commands.command()
 @commands.has_permissions(ban_members=True)
@@ -166,9 +125,9 @@ async def mute(ctx, member: discord.Member, *, reason= None):
         prefix = json.load(f)
 
     if str(ctx.author.guild.id) in prefix:
-        if prefix[str(ctx.author.guild.id)]["Prefix"] is None: theprefix = default
+        if prefix[str(ctx.author.guild.id)]["Prefix"] is None: theprefix = default_prefix
         else: theprefix = prefix[str(ctx.author.guild.id)]["Prefix"]
-    else: theprefix = default
+    else: theprefix = default_prefix
     if str(ctx.author.guild.id) in prefix:
         if prefix[str(ctx.author.guild.id)]["Mute Role"] is None:
             cool = False
@@ -213,11 +172,11 @@ async def unmute(ctx, member: discord.Member, *, reason=None):
 
     if str(ctx.author.guild.id) in prefix:
         if prefix[str(ctx.author.guild.id)]["Prefix"] is None:
-            theprefix = default
+            theprefix = default_prefix
         else:
             theprefix = prefix[str(ctx.author.guild.id)]["Prefix"]
     else:
-        theprefix = default
+        theprefix = default_prefix
     if str(ctx.author.guild.id) in prefix:
         if prefix[str(ctx.author.guild.id)]["Mute Role"] is None:
             cool = False
