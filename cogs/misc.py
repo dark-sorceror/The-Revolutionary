@@ -1,75 +1,39 @@
-import discord
-from discord.ext import commands, tasks
-from discord.ext.commands.bot import Bot
 import time
-from discord.ext import commands
-import datetime
-from datetime import datetime, timedelta, timezone
 import asyncio
 import random
 import json
 import re
+import sys
+import typing
+import pymongo
+import locale
+import praw
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 from pathlib import Path
-import sys
-import locale
 from num2words import num2words
-import typing
 from collections import Counter
-# import fuzzywuzzy (NEXT UPDATE)
 
-cwd = Path(__file__).parents[0]
-cwd = str(cwd)
-default = "+"
-efile = 'C:/Users/Hao/PycharmProjects/master/error logs'
-color = discord.Color.gold()  # apply later
+import discord
+from discord.ext import commands, tasks
+from discord.ext.commands.bot import Bot
 
-def filterOnlyBots(member): return member.bot
-def write_json(data, filename):
-    with open(f"{cwd}/{filename}.json", "w") as file:
-        json.dump(data, file, indent=4)
-def read_json(filename):
-    with open(f"{cwd}/{filename}.json", "r") as file:
-        data = json.load(file)
-    return data
-def community_report(ctx):
-    guild = bot.get_guild(ctx.author.guild.id)
-    online = 0
-    idle = 0
-    offline = 0
-    dnd = 0
-    for m in guild.members:
-        if str(m.status) == "online":
-            online += 1
-        elif str(m.status) == "offline":
-            offline += 1
-        elif str(m.status) == "dnd":
-            dnd += 1
-        elif str(m.status) == "idle":
-            idle += 1
+from variables import (
+    default_prefix,
+    color,
+    cu,
+    bot,
+    owners,
+    cfeedback
+)
 
-    return online, idle, offline, dnd
-
-async def cu(command, db):
-    db["Total"][f"{command}"] += 1
-    db["Daily"][f"{command}"] += 1
-async def ctm(guild_id, db): db[str(guild_id)]["Total Messages"] += 1
-async def ctc(guild_id, db): db[str(guild_id)]["Total Commands"] += 1
-async def cs(guild_id, db, prefix): db[str(guild_id)]["Prefix"] = prefix
-async def ci(guild_id, db, invite): db[str(guild_id)]["Invite"] = f"{invite}"
-async def cmr(guild_id, db, role_id): db[str(guild_id)]["Mute Role"] = role_id
-async def determine_prefix(bot, message):
-    with open('serverdb.json', "r") as f: prefix = json.load(f)
-    if str(message.guild.id) in prefix:
-        if prefix[str(message.guild.id)]["Prefix"] is None: return default
-        else: return prefix[str(message.guild.id)]["Prefix"]
-    else: return default
-async def udb(guild_id, db):
-    if not str(guild_id) in db: db[str(guild_id)], db[str(guild_id)]["Prefix"], db[str(guild_id)]["Invite"], db[str(guild_id)]["Mute Role"],db[str(guild_id)]["Total Messages"], db[str(guild_id)]["Total Commands"] = {}, None, None, None, 0, 0
-    else: return
-
-bot = Bot(command_prefix=determine_prefix, intents=discord.Intents().all(), owner_ids=[497903117241810945, 567487802900480000])
-bot.remove_command('help')
+async def us(guild_id, db):
+    if not str(guild_id) in db:
+        db[str(guild_id)] = {}
+    else:
+        return
+async def css(guild_id, db, content, author, id):
+    db[str(guild_id)][f"{author} | {id}"] = str(content)
 
 # Up to Date
 @commands.command(aliases=["Date", "DATE", "Today", "today", "now", "Now"])
@@ -104,18 +68,19 @@ async def userinfo(ctx, member: discord.Member = None):
         await cu("Userinfo", db)
         with open('commandusage.json', "w") as f: json.dump(db, f, indent=4, sort_keys=True)
     if member is None:
-        if ctx.author.status is discord.Status.offline:ms = "<:offline:870758702360191007> Offline"
+        if ctx.author.status is discord.Status.offline:ms = "<:offline:883116572904923138> Offline"
         elif ctx.author.status is discord.Status.online:
-            if ctx.author.is_on_mobile() == True:ms = "<:mobile:868253746155646976> Mobile"
-            elif ctx.author.activity is not None and ctx.author.activity.type is discord.ActivityType.streaming: ms="<:streaming:870758731674157118>"
-            else:ms = "<:online:870758878416105523> Online"
-        elif ctx.author.status is discord.Status.idle:ms = "<:idle:870758669325860896> Idle"
-        elif ctx.author.status is discord.Status.dnd:ms = "<:dnd:870758632306913360> Do Not Disturb"
+            if ctx.author.is_on_mobile() == True:ms = "<:mobile:883116501178122240> Mobile"
+            elif ctx.author.activity is not None and ctx.author.activity.type is discord.ActivityType.streaming: ms="<:streaming:883116541531545630>"
+            else:ms = "<:online:883116554298990605> Online"
+        elif ctx.author.status is discord.Status.idle:ms = "<:idle:883116602332160000> Idle"
+        elif ctx.author.status is discord.Status.dnd:ms = "<:dnd:883116589531160576> Do Not Disturb"
         else:ms = "unknown"
+        micon = ctx.author.default_avatar if not ctx.author.avatar else ctx.author.avatar.url
 
         embed = discord.Embed(title=f"{ctx.author.name}'s info.",description=f"This account belongs to {ctx.author.mention}",colour=ctx.author.color)
-        embed.set_thumbnail(url=f"{ctx.author.avatar}")
-        embed.set_author(name=f"{ctx.author}",icon_url=f"{ctx.author.avatar}")
+        embed.set_thumbnail(url=f"{micon}")
+        embed.set_author(name=f"{ctx.author}",icon_url=f"{micon}")
         embed.add_field(name='Created at',value=f'{discord.utils.format_dt(discord.utils.snowflake_time(ctx.author.id), style="D")}\n({discord.utils.format_dt(discord.utils.snowflake_time(ctx.author.id), style="R")})',inline=True)
         embed.add_field(name='Joined at',value=f'{discord.utils.format_dt(ctx.author.joined_at, style="D")}\n({discord.utils.format_dt(ctx.author.joined_at, style="R")})',inline=True)
         embed.add_field(name="Status", value=f'{ms}', inline=True)
@@ -124,23 +89,25 @@ async def userinfo(ctx, member: discord.Member = None):
         embed.set_footer(text=f"ID: {ctx.author.id}")
         await ctx.send(embed=embed)
     else:
-        if member.status is discord.Status.offline:ms = "<:offline:870758702360191007> Offline"
+        thelist = []
+        if member.status is discord.Status.offline:ms = "<:offline:883116572904923138> Offline"
         elif member.status is discord.Status.online:
-            if member.is_on_mobile() == True:ms = "<:mobile:868253746155646976> Mobile"
-            elif member.activity is not None and member.activity.type is discord.ActivityType.streaming: ms="<:streaming:870758731674157118> Streaming"
-            else:ms = "<:online:870758878416105523> Online"
-        elif member.status is discord.Status.idle:ms = "<:idle:870758669325860896> Idle"
-        elif member.status is discord.Status.dnd:ms = "<:dnd:870758632306913360> Do Not Disturb"
+            if member.is_on_mobile() == True:ms = "<:mobile:883116501178122240> Mobile"
+            elif member.activity is not None and member.activity.type is discord.ActivityType.streaming: ms="<:streaming:883116541531545630> Streaming"
+            else:ms = "<:online:883116554298990605> Online"
+        elif member.status is discord.Status.idle:ms = "<:idle:883116602332160000> Idle"
+        elif member.status is discord.Status.dnd:ms = "<:dnd:883116589531160576> Do Not Disturb"
         else:ms = "unknown"
 
-        thelist = []
-
         #MUTUAL GUILDS
-        for a in member.mutual_guilds: thelist.append(f"(`{a.id}`) ─ **{a}**")
+        for a in member.mutual_guilds:
+            thelist.append(f"(`{a.id}`) ─ **{a}**")
+
+        micon = member.default_avatar if not member.avatar else member.avatar.url
 
         embed = discord.Embed(title=f"{member.name}'s info.", description=f"This account belongs to {member.mention}",colour=member.color)
-        embed.set_thumbnail(url=f"{member.avatar}")
-        embed.set_author(name=f"{member}",icon_url=f"{member.avatar}")
+        embed.set_thumbnail(url=f"{micon}")
+        embed.set_author(name=f"{member}",icon_url=f"{micon}")
         embed.add_field(name='Created on',value=f'{discord.utils.format_dt(discord.utils.snowflake_time(member.id), style="D")}\n({discord.utils.format_dt(discord.utils.snowflake_time(member.id), style="R")})',inline=True)
         embed.add_field(name='Joined on',value=f'{discord.utils.format_dt(member.joined_at, style="D")}\n({discord.utils.format_dt(member.joined_at, style="R")})',inline=True)
         embed.add_field(name="Status", value=f'{ms}', inline=True)
@@ -161,13 +128,19 @@ async def guserinfo(ctx, member:discord.User):
     # MUTUAL GUILDS
     for a in member.mutual_guilds: thelist.append(f"(`{a.id}`) ─ **{a}**")
 
-    embed = discord.Embed(title=f"{member.name}'s Basic Info.",
-                          colour=member.color)
-    embed.set_thumbnail(url=f"{member.avatar}")
-    embed.set_author(name=f"{member}", icon_url=f"{member.avatar}")
+    micon = member.default_avatar if member.avatar is None else member.avatar.url
+
+    word = "\n".join(b for b in thelist)
+
+    if len(word) == 0: word = "None"
+    else: word = "\n".join(b for b in thelist)
+
+    embed = discord.Embed(title=f"{member.name}'s Basic Info.", colour=member.color)
+    embed.set_thumbnail(url=micon)
+    embed.set_author(name=f"{member}", icon_url=micon)
     embed.add_field(name="User",value=f"{member}\n({member.mention})", inline=True)
     embed.add_field(name='Created at',value=f'{discord.utils.format_dt(discord.utils.snowflake_time(member.id), style="D")}\n({discord.utils.format_dt(discord.utils.snowflake_time(member.id), style="R")})',inline=True)
-    embed.add_field(name="Mutual Servers", value="\n".join(b for b in thelist), inline=False)
+    embed.add_field(name="Mutual Servers", value=f"{word}", inline=False)
     embed.set_footer(text=f"ID: {member.id}")
     await ctx.send(embed=embed)
 
@@ -205,7 +178,6 @@ async def channels(ctx):
     for channel in ctx.author.guild.channels:
         await ctx.send(f"{channel}")
 
-
 # Finished
 @commands.command(aliases=["av", "AV", "Av", "AVATAR", "Avatar"])
 @commands.is_owner()
@@ -215,15 +187,16 @@ async def avatar(ctx, *, member: discord.Member = None):
         await cu("Avatar", db)
         with open('commandusage.json', "w") as f: json.dump(db, f, indent=4, sort_keys=True)
     if member is None:
-        pfp = ctx.author.avatar
+        pfp = ctx.author.avatar.url
         embed = discord.Embed(title="Avatar", color=ctx.author.color)
-        embed.set_image(url=f"{pfp}")
-        embed.set_author(name=f"{ctx.author}", icon_url=f"{pfp}")
+        embed.set_image(url=pfp)
+        embed.set_author(name=f"{ctx.author}", icon_url=pfp)
         await ctx.send(embed=embed)
     else:
+        micon = member.default_avatar if not member.avatar else member.avatar.url
         embed = discord.Embed(title="Avatar", colour=member.color)
-        embed.set_image(url=f"{member.avatar}")
-        embed.set_author(name=f"{member}", icon_url=f"{member.avatar}")
+        embed.set_image(url=micon)
+        embed.set_author(name=f"{member}", icon_url=micon)
         await ctx.send(embed=embed)
 @avatar.error
 async def ae(ctx, error):
@@ -261,23 +234,22 @@ async def help(ctx, arg=None):
         with open('commandusage.json', "w") as f: json.dump(db, f, indent=4, sort_keys=True)
     with open('serverdb.json', "r") as f:prefix = json.load(f)
 
-    if str(ctx.author.guild.id) not in prefix:sp = default
+    if str(ctx.author.guild.id) not in prefix:sp = default_prefix
     else:
-        if prefix[str(ctx.author.guild.id)]["Prefix"] is None:sp = default
+        if prefix[str(ctx.author.guild.id)]["Prefix"] is None:sp = default_prefix
         else:sp = prefix[str(ctx.author.guild.id)]["Prefix"]
 
     if arg is None:
-        embed = discord.Embed(description=f"Use the dropdown menu below\n\n**Weekly Command Spotlight** \n**`{sp}help`** ─ The bot will choose from a list of your sort",color=color)
-        embed.set_author(name="The Revolutionary",icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
-        embed.add_field(name=":wrench: | Info/Utility", value="Select `Info/Utilities`", inline=True)
-        embed.add_field(name=":tada: | Fun/Misc", value="Select `Fun/Misc`", inline=True)
-        embed.add_field(name=":medal: | Activity", value="Select `Activities`", inline=True)
-        embed.add_field(name=":hammer: | Moderation", value="Select `Moderation`", inline=True)
-        embed.add_field(name=":dollar: | Currency", value="Select `Currency`", inline=True)
-        embed.add_field(name=":gear: | Bot Configuration", value="Select `Bot Configuration`", inline=True)
-        embed.set_footer(text="Created by sheeeesh#0001")
+        embed = discord.Embed(title="Bot Commands",description=f"Use the dropdown menu below\n\n**Weekly Command Spotlight** \n**`{sp}pban`** ─ Vote ban someone in the server! (jk)",color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
+        embed.add_field(name=":wrench: | Info/Utility", value="[Hover for Info](https://google.com 'Multi-purpose commands and information')\nSelect `Info/Utilities`", inline=True)
+        embed.add_field(name=":tada: | Fun/Misc", value="[Hover for Info](https://google.com 'Fun and entertaining commands for everyone')\nSelect `Fun/Misc`", inline=True)
+        embed.add_field(name=":medal: | Activity", value="[Hover for Info](https://google.com 'Interactive mini-games if your bored')\nSelect `Activities`", inline=True)
+        embed.add_field(name=":hammer: | Moderation", value="[Hover for Info](https://google.com 'Powerful moderation commands')\nSelect `Moderation`", inline=True)
+        embed.add_field(name=":dollar: | Currency", value="[Hover for Info](https://google.com 'Play with a Currency simulation')\nSelect `Currency`", inline=True)
+        embed.add_field(name=":gear: | Bot Configuration", value="[Hover for Info](https://google.com 'Configure this bot in your server')\nSelect `Bot Configuration`", inline=True)
+        embed.set_footer(text=f"Created by {owners[0]} and {owners[1]}")
         my_view = helpbuttons(timeout=10)
-        out = await ctx.send(embed=embed, view=my_view)
+        out = await ctx.reply(embed=embed, view=my_view, mention_author=False)
         my_view.response = out
         my_view.user = ctx.author.id
     else:
@@ -554,32 +526,30 @@ class helpbuttons(discord.ui.View):
             prefix = json.load(f)
         if str(interaction.guild_id) in prefix:
             if prefix[str(interaction.guild_id)]["Prefix"] is None:
-                sp = default
+                sp = default_prefix
             else:
                 sp = prefix[str(interaction.guild_id)]["Prefix"]
         else:
-            sp = default
+            sp = default_prefix
         if select.values[0] == 'Info':
             embed = discord.Embed(title=":wrench: Info/Utility Commands", description=f"""
 Make sure to include **`{sp}`** as the prefix for each command below.
 
-<:replyreply:880143833797632030>`Date` - View today's date (UTC for now)
-<:Reply:879889270469459979>`Userinfo` - Information about a specific user
+<:replystart:895447277622161469>`Date` - View today's date (UTC for now)
+<:Reply:882064180251877416>`Userinfo` - Information about a specific user
 
 [**Bot Information**](https://google.com "Information about this bot")
 Hover for Info
-<:Reply:879889270469459979>`Botinfo`, `Invite`, `Ping`, `Uptime`, `Version`
+<:Reply:882064180251877416>`Botinfo`, `Invite`, `Ping`, `Uptime`, `Version`
 
 [**Dank Memer**](https://google.com "Dank Memer Utilities to help you")
 Hover for Info
-<:Reply:879889270469459979>`Taxcalc`, `Tradeshop`
+<:Reply:882064180251877416>`Taxcalc`, `Tradeshop`
 
 [**Server Information**](https://google.com "Information and display stats about this server")
 Hover for Info
-<:Reply:879889270469459979>`Allroles`, `Channels`, `Emojilist`, `MemberCount`, `Serverinfo`      
-""", color=color)
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+<:Reply:882064180251877416>`Allroles`, `Channels`, `Emojilist`, `MemberCount`, `Serverinfo`
+""", color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
         elif select.values[0] == "Fun":
@@ -587,32 +557,30 @@ Hover for Info
                                   description=f"""
 Make sure to include **`{sp}`** as the prefix for each command below.
 
-<:replyreply:880143833797632030>`Avatar` - View someone's avatar
-<:replyreply:880143833797632030>`Choose` - The bot will choose from a list of your sort
-<:Reply:879889270469459979>`Commandlb` - Shows the top 10 most used commands
+<:replystart:895447277622161469>`Avatar` - View someone's avatar
+<:ReplyContinue:882064049850961981>`Choose` - The bot will choose from a list of your sort
+<:Reply:882064180251877416>`Commandlb` - Shows the top 10 most used commands
 
 [**Google**](https://google.com "Google something quickly in Discord")
 Hover for Info
-<:Reply:879889270469459979>`Google`       
+<:Reply:882064180251877416>`Google`
 
 [**Output**](https://google.com "Input and Output")
 Hover for Info
-<:Reply:879889270469459979>`Emojify`, `Num2Word`     
+<:Reply:882064180251877416>`Emojify`, `Num2Word`
 
 [**Rates**](https://google.com "Rates in percentage or just numbers")
 Hover for Info
-<:Reply:879889270469459979>`IQrate`, `Luck`, `Simprate`           
+<:Reply:882064180251877416>`IQrate`, `Luck`, `Simprate`
 
 [**Roleplay**](https://google.com "Roleplay with your friends")
 Hover for Info
-<:Reply:879889270469459979>`Bon`, `Hello`, `Pat`, ~~`Pban`~~, `Say`            
+<:Reply:882064180251877416>`Bon`, `Hello`, `Pat`, ~~`Pban`~~, `Say`
 
 [**Timer**](https://google.com "Start a timer")
 Hover for Info
-<:Reply:879889270469459979>`Timerstart`         
-""", color=color)
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+<:Reply:882064180251877416>`Timerstart`
+""", color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
         elif select.values[0] == "Activity":
@@ -620,13 +588,11 @@ Hover for Info
                                   description=f"""
 Make sure to include **`{sp}`** as the prefix for each command below.
 
-<:replyreply:880143833797632030>`Guess` - Guess a number from your choice **(default: 1-20)**
-<:replyreply:880143833797632030>`TicTacToe` - Play tictactoe with your friend
-<:Reply:879889270469459979>`Revolution` - Play war with your friend
+<:replystart:895447277622161469>`Guess` - Guess a number from your choice **(default: 1-20)**
+<:ReplyContinue:882064049850961981>`TicTacToe` - Play tictactoe with your friend
+<:Reply:882064180251877416>`Revolution` - Play war with your friend
 """,
-                                  color=discord.Color.gold())
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+                                  color=discord.Color.gold(), url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
         elif select.values[0] == "Moderation":
@@ -636,18 +602,16 @@ Make sure to include **`{sp}`** as the prefix for each command below.
 
 [**Actions**](https://google.com "Powerful and quick actions ready anytime")
 Hover for Info
-<:Reply:879889270469459979>`Ban`, `Kick`, `Mute`, `Unban`, `Unmute` 
+<:Reply:882064180251877416>`Ban`, `Kick`, `Mute`, `Unban`, `Unmute`
 
 [**Delete Messages**](https://google.com "Delete/purge a set amount of messages")
 Hover for Info
-<:Reply:879889270469459979>`Purge`
+<:Reply:882064180251877416>`Purge`
 
 [**Utilities**](https://google.com "Quick utilities to use")
 Hover for Info
-<:Reply:879889270469459979>`Dump`
-""", color=color)
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+<:Reply:882064180251877416>`Dump`
+""", color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
         elif select.values[0] == "Currency":
@@ -658,30 +622,28 @@ Make sure to include **`{sp}`** as the prefix for each command below.
 
 [**Economy**](https://google.com "Basic currency commands")
 Hover for Info
-<:Reply:879889270469459979>`Balance`, `Daily`, `Deposit`, `Feelinglucky`, `Give`, `Profile`, `Top`, `Withdraw`
+<:Reply:882064180251877416>`Balance`, `Daily`, `Deposit`, `Feelinglucky`, `Give`, `Profile`, `Top`, `Withdraw`
 
 [**Fishing**](https://google.com "Fishy fish fish")
 Hover for Info
-<:Reply:879889270469459979>`Fish`, `Fsell`, `Myfish`
+<:Reply:882064180251877416>`Fish`, `Fsell`, `Myfish`
 
 [**Gambling**](https://google.com "Gamble some coins")
 Hover for Info
-<:Reply:879889270469459979>`Flipcoin`, `Gamble`
+<:Reply:882064180251877416>`Flipcoin`, `Gamble`
 
 [**Leaderboards**](https://google.com "List of top 10 users")
 Hover for Info
-<:Reply:879889270469459979>`Top`, `Toptrophy`
+<:Reply:882064180251877416>`Top`, `Toptrophy`
 
 [**Leagues**](https://google.com "The Leagues")
 Hover for Info
-<:Reply:879889270469459979>`Leagues`
+<:Reply:882064180251877416>`Leagues`
 
 [**Stocks**](https://google.com "Stonks stonks stonks")
 Hover for Info
-<:Reply:879889270469459979>`Stocks`, `Mystocks`
-""", color=color)
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+<:Reply:882064180251877416>`Stocks`, `Mystocks`
+""", color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
         elif select.values[0] == "BC":
@@ -691,20 +653,18 @@ Make sure to include **`{sp}`** as the prefix for each command below.
 
 [**Moderation**](https://google.com "Configure Moderation Commands")
 Hover for Info
-<:Reply:879889270469459979>`Setmuterole`
+<:Reply:882064180251877416>`Setmuterole`
 
 [**Settings**](https://google.com "Make this bot suitable in your server")
 Hover for Info
-<:Reply:879889270469459979>`Setembedcolor`, `Setprefix`
-""", color=color)
-            embed.set_author(name="The Revolutionary",
-                             icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+<:Reply:882064180251877416>`Setembedcolor`, `Setprefix`
+""", color=color, url='https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot')
             embed.set_footer(text=f"Type {sp}help <command> for more information on a command.")
             await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label='', style=discord.ButtonStyle.grey, emoji="❌")
     async def close(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.delete_original_message()
+        await discord.InteractionMessage.delete(self)
 
 # Verified
 @commands.command()
@@ -739,7 +699,6 @@ async def war(ctx, member: discord.Member):
     mview.response = out
     mview.user.append(member.id)
     mview.user.append(ctx.author.id)
-
 class warbuttons(discord.ui.View):
     def __init__(self, timeout):
         super().__init__(timeout=timeout)
@@ -851,7 +810,7 @@ async def pban(ctx, member: discord.Member = None):
         await cu("Pban", db)
         with open('commandusage.json', "w") as f: json.dump(db, f, indent=4, sort_keys=True)
     view = pbanbuttons()
-    out = await ctx.reply(f"Should we ban **{member}**? (First to 10)", view=view, mention_author=False)
+    out = await ctx.reply(f"Should we ban **{member}**? (Majority wins)", view=view, mention_author=False)
     view.user = member.id
     view.response = out
 class pbanbuttons(discord.ui.View):
@@ -913,7 +872,7 @@ async def invite(ctx):
 class invitebuttons(discord.ui.View):
     def __init__(self):
         super().__init__()
-        url = 'https://discord.com/api/oauth2/authorize?client_id=862823231161630740&permissions=8&scope=bot%20applications.commands'
+        url = 'https://discord.com/api/oauth2/authorize?client_id=868699834461347880&permissions=8&scope=bot'
         url2 = 'https://discord.gg/g9NVw9utNk'
         self.add_item(discord.ui.Button(label='Bot Invite', url=url, style=discord.ButtonStyle.url))
         self.add_item(discord.ui.Button(label='Server Invite', url=url2, style=discord.ButtonStyle.url))
@@ -922,39 +881,16 @@ class invitebuttons(discord.ui.View):
 @commands.command()
 @commands.is_owner()
 async def nextupdate(ctx):
-    await ctx.reply("""To Do              | Status   | Description
-------------------------------------------------------------------
-++ Aliases         |          | Add to new commands
-+ Blacklist        | ON GOING | N/A
-+ Unblacklist      | ON GOING | N/A
-+ c:Setmuterole    |          | N/A
-++ Admin.py        |          | Update to present
-++ c:Change        |          | Fix all the bugs (redo)
-+ a:Findprefix     | FINISHED | Find a servers prefix in support
-+ c:Airport        | PENDING  | Available channels from a-z
-++ status.json  | ON GOING | Change terms
-++ c:Allroles      | ON GOING | Add "Your own roles", remove is_default() and is_bot_managed()
-++ c:Ban           |          |
-++ c:Mute          |          |
-++ c:Unmute        |          |
-+ a:clearlogs      |          |
-+ c:Commandlb      |          |
-+ c:Dump           | FINISHED |
-+ c:Membercount    | FINISHED |
-+ c:Emojify        |          |
-+ a:Say            |          |
-++ c:Guess         |          |
-+ c:Simprate       | FINISHED |
-+ c:Emojilist      |          |
-++ c:Setprefix     | FINISHED |
-++ c:Botinfo       |          |
-++ c:Version       |          |
-+ c:Hello          | FINISHED |
-++ c:Google        |          |
-++ c:Guess         |          |
-++ c:Help          |          | Add new commands
-++ c:Timer
-------------------------------------------------------------------""")
+    embed=discord.Embed(title="v2.2.0 plans", color=color)
+    embed.set_author(name="The Revolutionary",
+                     icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
+    await ctx.reply(embed=embed, mention_author=False, view=updatebuttons())
+class updatebuttons(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        url = 'https://trello.com/b/h4bMZyBV/the-revolutionary-220'
+        self.add_item(discord.ui.Button(label='Click Here', url=url, style=discord.ButtonStyle.url))
+
 
 @commands.command()
 @commands.is_owner()
@@ -1079,7 +1015,7 @@ async def taxcalc(ctx, amount):
     if amount.isnumeric() == False:
         await ctx.send("Must be a number")
     elif amount.isnumeric() == True:
-        if amount <= 0:
+        if int(amount) <= 0:
             await ctx.send("Must be greater than 0...")
         else:
             embed = discord.Embed(title=f"You have to pay {locale.format_string('%d', int(round(int(amount)/0.97)), grouping=True)}", description=f"Amount after tax: **{locale.format_string('%d', int(amount), grouping=True)}**\nAmount lost after tax: **{locale.format_string('%d', int(round(int(amount)/0.97))-int(amount), grouping=True)}**", color=discord.Color.gold())
@@ -1087,11 +1023,6 @@ async def taxcalc(ctx, amount):
             embed.set_footer(text="Tax Rate: 3%")
             embed.set_author(name="The Revolutionary", icon_url="https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024")
             await ctx.send(embed=embed)
-
-@commands.command()
-@commands.is_owner()
-async def test3(ctx, what: typing.Union[discord.Role, discord.TextChannel]):
-    await ctx.send(what)
 
 @commands.command()
 @commands.is_owner()
@@ -1141,25 +1072,36 @@ async def num2word(ctx, *, num2word):
 @commands.command()
 @commands.is_owner()
 async def tstart(ctx, time, *, reward):
-    with open('commandusage.json', "r") as f:
-        db = json.load(f)
-        await cu("Timer", db)
-        with open('commandusage.json', "w") as f: json.dump(db, f, indent=4, sort_keys=True)
     last = time[-1]
 
     multi = 1
+    suffix = ""
 
     if last == "s":
         multi = 1
+        if int(time[:-1]) > 1:
+            suffix = "seconds"
+        else:
+            suffix = "minute"
     elif last == "m":
         multi = 60
+        if int(time[:-1]) > 1:
+            suffix = "minutes"
+        else:
+            suffix = "minute"
+    elif last == "h":
+        multi = 3600
+        if int(time[:-1]) > 1:
+            suffix = "hours"
+        else:
+            suffix = "hour"
 
     time2 = int(time[:-1]) * multi
     mins, secs = divmod(time2, 60)
     h, mins = divmod(mins, 60)
+    future = datetime.now() + timedelta(seconds=time2)
 
     real = datetime.now() - timedelta(hours=12)
-    timezone = real + timedelta(hours=18)
     a = real + timedelta(minutes=mins, seconds=secs, hours=h)
 
     if datetime.now().hour >= 12:
@@ -1168,132 +1110,21 @@ async def tstart(ctx, time, *, reward):
         pmam = "AM"
 
     await ctx.channel.purge(limit=1)
-    msg = await ctx.send("**TIMER**")
-    while True:
+    msg = await ctx.send("**:timer: TIMER :timer:**")
+    while datetime.now().strftime('%H:%M:%S') < future.strftime('%H:%M:%S'):
         mins, secs = divmod(time2, 60)
         h, mins = divmod(mins, 60)
-        if secs == 0 and mins == 0 and h == 0:
-            new_embed3 = discord.Embed(title=f'{reward}',
-                                       description=f"Hosted by: {ctx.author.mention}",
-                                       color=discord.Color.gold())
-            new_embed3.set_author(name="Timer has ended",
-                                  icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-            new_embed3.set_footer(text=f"Ended on {a.strftime(f'%H:%M {pmam}')}")
-            await msg.edit(embed=new_embed3)
-            await msg.reply(
-                content=f"Timer has ended for **{reward}**!\nhttps://discord.com/channels/{ctx.author.guild.id}/{ctx.channel.id}/{msg.id}")
-            break
-        else:
-            if int(mins) == 0 and int(h) == 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time: **{secs} seconds** (ends )\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(mins) > 1 and int(h) == 0 and int(secs) > 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{mins}** minutes, **{secs}** seconds\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(mins) == 1 and int(h) == 0 and int(secs) == 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{mins}** minute\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(mins) == 1 and int(h) == 0 and int(secs) > 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{mins}** minute and **{secs}** seconds\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(mins) > 1 and int(h) == 0 and int(secs) == 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{mins}** minutes\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) > 1 and int(mins) == 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hours\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) > 1 and int(mins) == 1:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hours and **{mins}** minute\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) > 1 and int(mins) > 1:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hours, **{mins}** minutes\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) == 1 and int(mins) == 0:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hour\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) == 1 and int(mins) > 1:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hour and **{mins}** minutes\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
-            elif int(h) == 1 and int(mins) == 1:
-                new_embed1 = discord.Embed(title=f'{reward}',
-                                           description=f"Time Remaining: **{h}** hour and **{mins}** minute\nHosted by: {ctx.author.mention}",
-                                           color=discord.Color.gold())
-                new_embed1.set_author(name="Timer",
-                                      icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
-                new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
-                await msg.edit(embed=new_embed1)
-                await asyncio.sleep(1)
-                time2 -= 1
+
+        new_embed1 = discord.Embed(title=f'{reward}',description=f"Time: **{time[:-1]} {suffix}** (ends {discord.utils.format_dt(discord.utils.snowflake_time(msg.id)+timedelta(seconds=time2), style='R')})\nStarted by: **{ctx.author} | {ctx.author.mention}**",color=discord.Color.gold())
+        new_embed1.set_author(name="Timer",icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
+        new_embed1.set_footer(text=f"Ends at {a.strftime(f'%H:%M {pmam}')}")
+        await msg.edit(embed=new_embed1)
+        await asyncio.sleep(int(time2)/2)
+    new_embed3 = discord.Embed(title=f'{reward}',description=f"Started by: **{ctx.author} | {ctx.author.mention}**",color=discord.Color.from_rgb(47, 49, 54))
+    new_embed3.set_author(name="Timer has ended",icon_url="https://cdn.discordapp.com/attachments/690681407256789012/865432946068422656/c9c0406416e18421fc203dd3c8a2dba7.png")
+    new_embed3.set_footer(text=f"Ended on {a.strftime(f'%H:%M {pmam}')}")
+    await msg.edit(embed=new_embed3)
+    await msg.reply(content=f"Timer has ended for **{reward}**!\nhttps://discord.com/channels/{ctx.author.guild.id}/{ctx.channel.id}/{msg.id}")
 
 #V 2.0.0
 
@@ -1304,35 +1135,155 @@ async def afk(ctx):
 
 @commands.command()
 @commands.is_owner()
-async def settimezone(ctx, arg):
-    pass
+async def mutualg(ctx, member:discord.Member):
+    thelist = []
+
+    # MUTUAL GUILDS
+    for a in member.mutual_guilds: thelist.append(f"(`{a.id}`) ─ **{a}**")
+
+    word = "\n".join(b for b in thelist)
+
+    if len(word) == 0:
+        word = "None"
+    else:
+        word = "\n".join(b for b in thelist)
+
+    if member.avatar == None:
+        micon = member.default_avatar
+    else:
+        micon = member.avatar.url
+
+    embed = discord.Embed(title=f"{member.name}'s Mutual Servers With You", description=f"{word}", colour=ctx.author.color)
+    embed.set_author(name=f"{ctx.author}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+    await ctx.reply(embed=embed, mention_author=False)
 
 @commands.command()
 @commands.is_owner()
-async def mutualg(ctx):
-    pass
+async def banner(ctx, member:discord.Member=None):
+    if member is None:
+        if ctx.author.banner == None: bicon = True
+        else:bicon = ctx.author.banner
+
+        if ctx.author.avatar == None:micon = ctx.author.default_avatar
+        else:micon = ctx.author.avatar
+
+        if bicon == True:
+            embed = discord.Embed(title="User Banner", description="User has no banner", colour=ctx.author.color)
+            embed.set_author(name=f"{ctx.author}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+        else:
+            embed = discord.Embed(title="User Banner",colour=ctx.author.color)
+            embed.set_image(url=bicon)
+            embed.set_author(name=f"{ctx.author}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
+    else:
+        if member.banner == None: bicon = True
+        else:bicon = member.banner
+
+        if member.avatar == None:micon = member.default_avatar
+        else:micon = member.avatar
+
+        if bicon == True:
+            embed = discord.Embed(title="User Banner", description="User has no banner", colour=member.color)
+            embed.set_author(name=f"{member}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+        else:
+            embed = discord.Embed(title="User Banner",colour=member.color)
+            embed.set_image(url=bicon)
+            embed.set_author(name=f"{member}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+        await ctx.reply(embed=embed, mention_author=False)
 
 @commands.command()
 @commands.is_owner()
-async def banner(ctx):
-    pass
+async def easy2read(ctx, arg):
+    if "```" in arg: await ctx.send(f"` {arg}   <-- Copy if needed!`")
+    else: await ctx.reply(f"``` {arg}   <-- Copy if needed!```", mention_author=False)
 
 @commands.command()
 @commands.is_owner()
-async def pbantimeout(ctx):
-    pass
+async def gavatar(ctx, member:discord.User):
+    if member.avatar == None: micon = member.default_avatar
+    else:micon = member.avatar
+
+    embed = discord.Embed(title="Avatar", colour=member.color)
+    embed.set_image(url=micon)
+    embed.set_author(name=f"{member}", icon_url='https://cdn.discordapp.com/emojis/895068536223985664.png?size=32')
+    await ctx.reply(embed=embed, mention_author=False)
 
 @commands.command()
 @commands.is_owner()
-async def easy2read(ctx):
-    pass
+async def _(ctx):
+    await ctx.send("_ (`You found a secret command!`)")
 
 @commands.command()
 @commands.is_owner()
-async def pbantimeout(ctx):
-    pass
+async def updatee(ctx):
+    embed = discord.Embed(title="**Version 2.2.0 Patch Notes!**", description="""
+These notes only cover the most important updates, we did many small changes to almost every existing command. We might've forgot to put an important update on here. This update mainly focused on currency commands and formatting.
+
+> **LEAGUES! <:leaguetrophy:891844638380556319>**
+> <:Reply:882064180251877416> Trophy ratings, check `r!leagues` for more info
+>
+> **Gamble and Slot Machine! :moneybag:**
+> <:Reply:882064180251877416> Gamble your money with two new gambling commands!
+>
+> **New command: `r!profile`**, check user/your balance, league/trophy, fish net, and most prized catch
+>
+> **You can now shop for items! :shopping_cart: :shopping_bags: `r!shop`**
+> <:ReplyContinue:882064049850961981> 4 New First Items listed in the shop
+> <:Reply:882064180251877416> Buy/Sell/Use Items! `r!buy`|`r!sell`|`r!use`!
+>
+> **3 New fish!! 👀 `r!fish`** to try to get the **__three__** new fish :fish:!
+> <:ReplyContinue:882064049850961981> There is now also a chance to get nothing!
+> <:ReplyContinue:882064049850961981> Lobster downgraded one rarity :chart_with_downwards_trend:
+> <:Reply:882064180251877416> You can now sell fish! The fish you catch counts as your fish net
+>
+> **2 New Stocks!! 👀 `r!stocks`**
+> <:ReplyContinue:882064049850961981> Stock custom BUY button! (only for one tho)
+> <:Reply:882064180251877416> Formatting changed dramatically! Much more aesthetically pleasing
+>
+> **New item: Worms :worm:!** They increase your luck in fishing. Can be bought in the shop.
+>
+> **`r!help` much much MUCH more user-friendly :boy:**, this update's purpose was to be more appealing towards new users
+> <:Reply:882064180251877416> Finished the individual sub-commands
+>
+> **20 New Commands** Check them out!
+
+**Tell us how we did! `r!feedback`**
+""", color=color)
+    embed.set_footer(text="The Revolutionary Staff",
+                     icon_url='https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024')
+    embed.set_thumbnail(
+        url='https://cdn.discordapp.com/avatars/862823231161630740/c9c0406416e18421fc203dd3c8a2dba7.webp?size=1024')
+    await ctx.channel.purge(limit=1)
+    await ctx.send(embed=embed)
+
+#V 2.5.0
+
+@commands.command()
+@commands.is_owner()
+async def meme(ctx):
+    reddit = praw.Reddit(client_id='Pb0283EFt8VAug',
+                         client_secret='zsWBP1S1tPJKU__3Xut0s-nYSWuSSA',
+                         user_agent='meme-collector')
+
+    memes_submissions = reddit.subreddit('memes').hot(limit=200)
+    post_to_pick = random.randint(1, 10)
+    submission=None
+    for i in range(0, post_to_pick):submission = next(x for x in memes_submissions if not x.stickied)
+
+    embed = discord.Embed(title="Meme Compliation", color=color)
+    embed.set_image(url=submission.url)
+
+    #embed.set_footer(text=f"👍 {thumbsup} | 💬 {comments} | r/memes")
+    await ctx.send(embed=embed)
 
 def setup(bot):
+    bot.add_command(meme)
+    bot.add_command(updatee)
+    bot.add_command(_)
+    bot.add_command(afk)
+    bot.add_command(mutualg)
+    bot.add_command(banner)
+    bot.add_command(easy2read)
     bot.add_command(guserinfo)
     bot.add_command(luck)
     bot.add_command(iqrate)
@@ -1340,7 +1291,6 @@ def setup(bot):
     bot.add_command(tstart)
     bot.add_command(num2word)
     bot.add_command(emojify)
-    bot.add_command(test3)
     bot.add_command(taxcalc)
     bot.add_command(dump)
     bot.add_command(membercount)
@@ -1364,3 +1314,4 @@ def setup(bot):
     bot.add_command(invite)
     bot.add_command(date)
     bot.add_command(war)
+    bot.add_command(gavatar)
