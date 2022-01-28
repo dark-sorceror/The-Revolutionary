@@ -1,0 +1,70 @@
+import time
+import asyncio
+import random
+import json
+import re
+import sys
+import locale
+import typing
+import pymongo
+from urllib.parse import quote_plus
+from pathlib import Path
+from num2words import num2words
+from datetime import datetime, timedelta, timezone
+
+import discord
+from discord.ext import commands, tasks
+from discord.ext.commands.bot import Bot
+
+cwd = str(Path(__file__).parents[0])
+default_prefix = "+"
+efile = 'C:/Users/Hao/PycharmProjects/master/error logs'
+color = discord.Color.gold()
+owners = ['hecker#2364', 'Beluga Jr.#1258']
+
+def filterOnlyBots(member): return member.bot
+def write_json(data, filename):
+    with open(f"{cwd}/{filename}.json", "w") as file:
+        json.dump(data, file, indent=4)
+def read_json(filename):
+    with open(f"{cwd}/{filename}.json", "r") as file:
+        data = json.load(file)
+    return data
+def community_report(ctx):
+    guild = bot.get_guild(ctx.author.guild.id)
+    online, idle, offline, dnd, streaming, mobile = 0, 0, 0, 0, 0, 0
+    for m in guild.members:
+        if m.status is discord.Status.online:
+            if m.is_on_mobile(): mobile += 1
+            elif m.activity is not None and m.activity.type is discord.ActivityType.streaming: streaming += 1
+            else: online += 1
+        elif m.status is discord.Status.offline: offline += 1
+        elif m.status is discord.Status.dnd: dnd += 1
+        elif m.status is discord.Status.idle: idle += 1
+    return online, idle, offline, dnd, streaming, mobile
+
+async def cu(command, db):
+    db["Total"][f"{command}"] += 1
+    db["Daily"][f"{command}"] += 1
+async def ctm(guild_id, db): db[str(guild_id)]["Total Messages"] += 1
+async def ctc(guild_id, db): db[str(guild_id)]["Total Commands"] += 1
+async def cs(guild_id, db, prefix): db[str(guild_id)]["Prefix"] = prefix
+async def ci(guild_id, db, invite): db[str(guild_id)]["Invite"] = f"{invite}"
+async def cmr(guild_id, db, role_id): db[str(guild_id)]["Mute Role"] = role_id
+async def determine_prefix(bot, message):
+    with open('serverdb.json', "r") as f: prefix = json.load(f)
+    if str(message.guild.id) in prefix:
+        if prefix[str(message.guild.id)]["Prefix"] is None: return default_prefix
+        else: return prefix[str(message.guild.id)]["Prefix"]
+    else: return default_prefix
+async def udb(guild_id, db):
+    if not str(guild_id) in db: db[str(guild_id)], db[str(guild_id)]["Prefix"], db[str(guild_id)]["Invite"], db[str(guild_id)]["Mute Role"],db[str(guild_id)]["Total Messages"], db[str(guild_id)]["Total Commands"] = {}, None, None, None, 0, 0
+    else: return
+
+db = pymongo.MongoClient("mongodb+srv://abcd:abcde@cluster0.ctiwz.mongodb.net/currency?retryWrites=true&w=majority")["currency"]
+pre = "⌬ "
+custom_footer = "WIP"
+
+dfile = 'C:/Users/Hao/PycharmProjects/master/dbinfo'
+bot = Bot(command_prefix=determine_prefix, intents=discord.Intents().all(), owner_ids=[497903117241810945, 567487802900480000,707697817082265620])
+bot.remove_command('help')
