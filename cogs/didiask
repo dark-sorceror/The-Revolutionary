@@ -1,0 +1,163 @@
+import discord
+from discord.ext import commands, tasks
+from discord.ext.commands.bot import Bot
+import time
+from datetime import datetime, timedelta, timezone
+import asyncio
+import random
+import json
+import re
+from urllib.parse import quote_plus
+from pathlib import Path
+import sys
+import locale
+from num2words import num2words
+import typing
+import pymongo
+from discord import TextChannel
+import youtube_dl
+import os
+import urllib
+from urllib import parse, request
+import simplejson
+import requests
+import pafy
+
+cwd = str(Path(__file__).parents[0])
+default = "m!"
+efile = 'C:/Users/Hao/PycharmProjects/The Revolutionary/error logs'
+color = discord.Color.gold()
+owners = ['hecker#2364', 'Beluga Jr.#1258']
+bversion = '0.0.0'
+locale.setlocale(locale.LC_ALL, '')
+
+bot = Bot(command_prefix=default, intents=discord.Intents().all(), owner_ids=[497903117241810945, 567487802900480000,707697817082265620])
+bot.remove_command('help')
+
+ytdl_format_options = {
+    'format': 'bestaudio/best',
+    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+    'restrictfilenames': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+}
+
+ffmpeg_options = {
+    'options': '-vn'
+}
+
+ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+def update_progress(progress):
+    barLength = 40 # Modify this to change the length of the progress bar
+    status = ""
+    if isinstance(progress, int):
+        progress = float(progress)
+    if not isinstance(progress, float):
+        progress = 0
+        status = "error: progress var must be float\r\n"
+    if progress < 0:
+        progress = 0
+        status = "Halt...\r\n"
+    if progress >= 1:
+        progress = 1
+        status = "Done...\r\n"
+    block = int(round(barLength*progress))
+    text = "[{0}]".format( "#"*block + "-"*(barLength-block))
+    return text
+
+class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+
+        self.data = data
+
+        self.title = data.get('title')
+        self.url = data.get('url')
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
+        if 'entries' in data:
+            # take first item from a playlist
+            data = data['entries'][0]
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+
+@bot.command()
+async def join(ctx):
+    if ctx.author.voice is None:
+        await ctx.send(f"**You're currently not in a valid voice channel**")
+    else:
+        channel = ctx.author.voice.channel
+        if ctx.voice_client is None:
+            await channel.connect()
+            await ctx.send(f"**Joined `{channel}` and bound to <#{ctx.message.channel.id}>**")
+        else:
+            await ctx.voice_client.move_to(channel)
+            await ctx.send(f"**Moved to `{channel}` and bound to <#{ctx.message.channel.id}>**")
+@bot.command()
+async def leave(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+    else:
+        await ctx.send("**I'm not in a voice channel, use the join command to make me join**")
+@bot.command()
+async def play(ctx, *, search):
+    if ctx.voice_client is None:
+        await ctx.send(f"**I am currently not in a valid voice channel**")
+    else:
+        msg = await ctx.send("This may take longer than usual... (lag sux)")
+        if search[0:8] == "https://":
+            url = f"{search}"
+        else:
+            search2 = search.replace(" ", "+")
+            html = urllib.request.urlopen("https://www.youtube.com/results?search_query=" + search2)
+            video_ids = re.findall(r"watch\?v=(\S{11})", html.read().decode())
+            url = "https://www.youtube.com/watch?v=" + video_ids[0]
+        player = await YTDLSource.from_url(url, loop=bot.loop)
+        ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
+
+        video = pafy.new(url)
+        embed=discord.Embed(title="Now playing :musical_note:", description=f"**{video.title}**\n**Duration:** `{video.duration.strip('0').strip(':').strip('0')[0]} minutes {video.duration.strip('0').strip(':').strip('0')[2:]} seconds`\n{url}",color=discord.Color.from_rgb(47, 49, 54))
+        embed.set_footer(text=f"{str(locale.format_string('%d', video.viewcount, grouping=True))} 👀 | {str(locale.format_string('%d', video.likes, grouping=True))} 👍")
+        await msg.edit(content=None,embed=embed)
+
+@bot.command()
+async def pause(ctx):
+    ctx.voice_client.pause()
+    await ctx.send(f'**Paused ⏸️**')
+
+@bot.command()
+async def resume(ctx):
+    ctx.voice_client.resume()
+
+@bot.command()
+async def stop(ctx):
+    ctx.voice_client.stop() 
+    await ctx.send(f'**Stopped playing in `{ctx.author.voice.channel}`**')
+
+@bot.command()
+async def volume(ctx, volume: int):
+    if ctx.voice_client is None:
+        return await ctx.send("**Not connected to a voice channel.**")
+
+    ctx.voice_client.source.volume = volume / 100
+    await ctx.send(f"**Changed volume to `{volume}%`**")
+
+@bot.event
+async def on_ready():
+    await bot.change_presence(status=discord.Status.online, activity=discord.Activity(name='the new Rythm', type=5))
+
+bot.run('ODkzOTI0OTcyOTExNzk2MjU1.YViigQ._wcNVHuE0UlSBfVxujpQEdGxE1g')
+
+
